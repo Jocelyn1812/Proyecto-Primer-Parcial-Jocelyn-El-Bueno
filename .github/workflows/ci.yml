@@ -1,0 +1,60 @@
+name: CI/CD Pipeline - Detección de Errores
+
+on:
+  push:
+    branches: [ main, develop, examen-primer-parcial ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-application:
+    runs-on: ubuntu-latest
+    name: Test Flask Application
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Test Flask application startup
+      run: |
+        # Este comando DETECTARÁ errores reales
+        timeout 30s python app.py &
+        sleep 10
+        curl -f http://localhost:5000/health || exit 1
+        echo "Application started successfully"
+        
+    - name: Check Python syntax
+      run: |
+        python -m py_compile app.py
+        echo "✅ Python syntax is correct"
+
+  build-docker:
+    runs-on: ubuntu-latest
+    name: Build and Test Docker
+    needs: test-application
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build Docker image
+      run: |
+        docker build -t proyecto-app:${{ github.sha }} .
+        
+    - name: Test Docker container
+      run: |
+        docker run -d -p 5000:5000 --name test-container proyecto-app:${{ github.sha }}
+        sleep 10
+        docker ps | grep test-container
+        curl -f http://localhost:5000/health || exit 1
+        echo "Docker container works correctly"
+        docker stop test-container
